@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from Layers import MultiHeadAttention, CrossAttention
+from Layers import MultiHeadAttention, CrossAttention, MaskMultiHeadAttention
 import torch.nn.functional as F
 import math
 
@@ -38,7 +38,7 @@ class TransformerEncoderLayer(nn.Module):
 
 
 # x_en: [C, T, embed_size]
-# y_de: [C, out_T_dim, embed_size]
+# y_de: [C, T, embed_size]
 class TransformerDecoder(nn.Module):
     def __init__(self, dec_num_layers, embed_size, heads, T, out_T_dim, map_dim):
         super(TransformerDecoder, self).__init__()
@@ -52,10 +52,12 @@ class TransformerDecoder(nn.Module):
         return out
 
 
+# x_en:[C,T,embed_size]  y_de:[C,out_T_dim,embed_size]
 # out: [C, out_T_dim, embed_size]
 class TransformerDecoderLayer(nn.Module):
     def __init__(self, embed_size, heads, T, out_T_dim, map_dim):
         super(TransformerDecoderLayer, self).__init__()
+        self.maskattn = MaskMultiHeadAttention(embed_size, heads)
         self.attn = MultiHeadAttention(embed_size, heads)
         self.crossattn = CrossAttention(embed_size, heads, T, out_T_dim)
         self.fc1 = nn.Linear(embed_size, map_dim)
@@ -63,18 +65,21 @@ class TransformerDecoderLayer(nn.Module):
         self.norm1 = nn.LayerNorm(embed_size)
         self.norm2 = nn.LayerNorm(embed_size)
         self.norm3 = nn.LayerNorm(embed_size)
+        self.norm4 = nn.LayerNorm(embed_size)
 
     def forward(self, x_en, y_de):
-        y_de = self.norm1(self.attn(y_de) + y_de)
-        crossout = self.norm2(self.crossattn(x_en, y_de) + y_de)
-        out = self.fc2(F.relu(self.fc1(crossout)))
-        return self.norm3(out + crossout)
+        C, out_T_dim, _ = y_de.shape
+        y_de = self.norm1(self.maskattn(y_de) + y_de)  # [C, out_T_dim, embed_size]
+        crossout = self.norm2(self.crossattn(x_en, y_de) + y_de)  # [C, out_T_dim, embed_size]
+        attn = self.norm3(self.attn(crossout) + crossout)  # [C, out_T_dim, embed_size]
+        out = self.fc2(F.relu(self.fc1(attn)))
+        return self.norm4(out + crossout)
 
 
 """
 x = torch.rand((1, 20, 512))
 y = torch.rand((1, 1, 512))
-model = Decoder(6, 512, 8, 20, 1, 2048)
+model = TransformerDecoderLayer(512, 8, 20, 1, 2048)
 out = model(x, y)
 print(out.shape)
 """
@@ -139,7 +144,8 @@ print(y.shape)
 """
 
 
-# input:[C, T]
+# Decoder中的Transformer
+# input_x:[C, T], input_y:[C,out_T_dim], 更新缺失数据时，T=out_T_dim
 # output:[C, out_T_dim]
 class DTransformer(nn.Module):
     def __init__(self, T, out_T_dim, en_num_layers, dec_num_layers, embed_size, heads, map_dim):
@@ -159,11 +165,11 @@ class DTransformer(nn.Module):
 
         y = input_y.unsqueeze(2)
         y_pe = self.pe(y)
-        x = F.relu(self.fc2(y))
+        y = F.relu(self.fc2(y))
         y = y + y_pe
 
         enc_out = self.t_encoder(x)  # [C, T, embed_size]
-        dec_out = self.t_decoder(x, y)  # [C, T, embed_size]
+        dec_out = self.t_decoder(enc_out, y)  # [C, out_T_dim, embed_size]
 
         target = self.fc3(dec_out).squeeze(2)
         return target
@@ -171,8 +177,8 @@ class DTransformer(nn.Module):
 
 """
 x = torch.randn(2,3)
-y = torch.randn(2, 3)
-model = DTransformer(3, 3, 1, 1, 512, 4, 2048)
+y = torch.randn(2, 4)
+model = DTransformer(3, 4, 1, 1, 512, 4, 2048)
 out = model(x, y)
 print(out.shape)
 """
