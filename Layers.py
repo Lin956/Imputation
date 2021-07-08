@@ -39,7 +39,7 @@ class MultiHeadAttention(nn.Module):
 
 # x_de: [C, T, embed_size]
 # y_de: [C, out_T_dim, embed_size]
-# out: [C, out_T_dim.,embed_size]
+# out: [C, out_T_dim, embed_size]
 class CrossAttention(nn.Module):
     def __init__(self, embed_size, heads, T, out_T_dim):
         super(CrossAttention, self).__init__()
@@ -80,6 +80,54 @@ y = torch.randn(1, 1, 512)
 out = model(x, y)
 print(out.shape)
 """
+
+
+# input:[C, out_T_dim, embed_size]
+# output:[C, out_T_dim, embed_size]
+"""
+x_T是encoder输入序列时间维度
+"""
+class MaskMultiHeadAttention(nn.Module):
+    def __init__(self, embed_size, heads):
+        super(MaskMultiHeadAttention, self).__init__()
+        self.embed_size = embed_size
+        self.heads = heads
+        self.per_dim = embed_size // heads
+        self.queries = nn.Linear(self.per_dim, self.per_dim)
+        self.keys = nn.Linear(self.per_dim, self.per_dim)
+        self.values = nn.Linear(self.per_dim, self.per_dim)
+
+    def forward(self, y_de):
+        C, T, E = y_de.shape
+
+        y_de = torch.tril(y_de, diagonal=-1)
+        x = y_de.view(C, T, self.heads, self.per_dim)
+        # print(y_de)
+
+        # compute queries, keys and values
+        queries = self.queries(x)
+        keys = self.keys(x)
+        values = self.values(x)
+
+        # scaled dot-product
+        attn = entmax15(torch.matmul(queries, torch.transpose(keys, 2, 3))
+                        / (self.embed_size ** (1 / 2)), dim=-1)  # [C, out_T_dim, heads, heads]
+        # print(attn.shape)
+        out = torch.matmul(attn, values)  # [C,out_T_dim, heads, per_dim]
+        # print(out.shape)
+
+        out = out.view(C, T, self.heads * self.per_dim)
+        return out
+
+
+"""
+model = MaskMultiHeadAttention(4, 2)
+x = torch.randn(2, 3, 4)
+out = model(x)
+
+print(out.shape)
+"""
+
 
 # input: [C, T]
 # output: [C, T]
@@ -150,7 +198,7 @@ class ImputationBlock(nn.Module):
 
     def forward(self, x, c, m):
         """
-
+        m 缺失标记:[C,T]
         x 原本序列:[C,T]
         c 是序列信息:[C,T]
         P 是更新了缺失值的序列:[C, T]
