@@ -150,6 +150,8 @@ model = T2DCR(5, 20)
 out = model(x)
 print(out.shape)
 """
+
+
 # input:[C,T]
 # output:[C, T]
 class ZLinear(nn.Module):
@@ -188,26 +190,26 @@ print(out)
 # input:[C,T]
 # output:[C,T]
 class ImputationBlock(nn.Module):
-    def __init__(self, C, T, delta):
+    def __init__(self, C, T):
         super(ImputationBlock, self).__init__()
         self.fc1 = nn.Linear(T, T, bias=True)
         self.fc2 = ZLinear(C, T)
         self.fc3 = nn.Linear(T, T, bias=True)
         self.fc4 = nn.Linear(T, T, bias=True)
-        self.delta = delta   # [C, T]
 
-    def forward(self, x, c, m):
+    def forward(self, x, c, m, delta):
         """
         m 缺失标记:[C,T]
-        x 原本序列:[C,T]
+        x 原本序列， 有缺失:[C,T]
         c 是序列信息:[C,T]
         P 是更新了缺失值的序列:[C, T]
         """
+        # print(c.shape)
         z_t = self.fc1(c)
         z_t_hat = m * c + (1 - m) * z_t
 
         out = self.fc2(z_t_hat)  # [C, T]
-        namida = torch.sigmoid(F.relu(self.fc3(self.delta)) + F.relu(self.fc4(m)))
+        namida = torch.sigmoid(F.relu(self.fc3(delta)) + F.relu(self.fc4(m)))
 
         # estimate x_hat
         x_hat = (1 - namida) * z_t + namida * out
