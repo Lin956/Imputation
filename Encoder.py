@@ -4,8 +4,8 @@ from modules import ETransformer
 from Layers import T2DCR
 
 
-# input(x,m): x[C, T], C is the number of sensor.m:[C, T]
-# output: x[C, T],m[C,T] 为缺失数据指示，为1或者0, 0为此处数据缺失
+# input(x,m): x[C, T], C is the number of sensor.m:[C, T]为缺失数据指示，为1或者0, 0为此处数据缺失
+# output: c[C, T]
 class Encoder(nn.Module):
     def __init__(self, C, T, en_num_layers, embed_size, heads, map_dim):
         super(Encoder, self).__init__()
@@ -19,6 +19,7 @@ class Encoder(nn.Module):
 
         # Transformer提取序列信息
         information = self.etransformer(x)  # [C, T]
+        # print(information.shape)
         return information
 
 
