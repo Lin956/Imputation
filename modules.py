@@ -117,7 +117,7 @@ print(y.shape)
 
 
 # input: [C, T]
-# output: [C,T, embed_size]
+# output: [C,T]
 # encoder 中的Transformer
 class ETransformer(nn.Module):
     def __init__(self, en_num_layers, embed_size, heads, map_dim):
@@ -125,6 +125,7 @@ class ETransformer(nn.Module):
         self.pe = PositionalEncoding(embed_size)
         self.t_encoder = TransfomerEncoder(en_num_layers, embed_size, heads, map_dim)
         self.fc1 = nn.Linear(1, embed_size)
+        self.fc2 = nn.Linear(embed_size, 1)
 
     def forward(self, input_x):
         x = input_x.unsqueeze(2)  # [C,T,1]
@@ -133,7 +134,7 @@ class ETransformer(nn.Module):
         x = x + x_pe
 
         target = self.t_encoder(x)  # [C,T,embed_size]
-
+        target = self.fc2(target).squeeze(2)
         return target
 
 """
